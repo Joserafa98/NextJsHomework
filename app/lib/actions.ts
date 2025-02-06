@@ -1,10 +1,12 @@
 'use server';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { db } from '@vercel/postgres';
+import postgres from 'postgres';
 import { redirect } from 'next/navigation';
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
+
+const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 // Add export keyword to make the type available
 export type State = {
@@ -16,14 +18,11 @@ export type State = {
   };
 };
 
-// Initialize client once at the top level
-const client = await db.connect();
-
 const FormSchema = z.object({
     id: z.string(),
     customerId: z.string({
         invalid_type_error: 'Please select a customer.',
-      }),
+    }),
     amount: z.coerce
       .number()
       .gt(0, { message: 'Please enter an amount greater than $0.' }),
@@ -55,7 +54,7 @@ export async function createInvoice(prevState: State, formData: FormData) {
     const date = new Date().toISOString().split('T')[0];
 
     try {
-        await client.sql`
+        await sql`
             INSERT INTO invoices (customer_id, amount, status, date)
             VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
         `;
@@ -92,7 +91,7 @@ export async function updateInvoice(
       const amountInCents = amount * 100;
    
     try {
-        await client.sql`
+        await sql`
             UPDATE invoices
             SET customer_id = ${customerId}, 
                 amount = ${amountInCents}, 
@@ -111,7 +110,7 @@ export async function updateInvoice(
 export async function deleteInvoice(id: string) {
     
     try {
-        await client.sql`DELETE FROM invoices WHERE id = ${id}`;
+        await sql`DELETE FROM invoices WHERE id = ${id}`;
         revalidatePath('/dashboard/invoices');
     } catch (error) {
         console.error('Database Error:', error);
